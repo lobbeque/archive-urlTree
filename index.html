@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <title>Archives Url Tree</title>
+    
+    <!-- Css Lib -->
+    <link href="lib/css/bootstrap.min.css" rel="stylesheet">
+    <link href="lib/css/font-awesome.min.css" rel="stylesheet">  
+    <link href="lib/css/qlobbe.css" rel="stylesheet">      
+    
+    <!-- Javascript Lib -->
+    <script type="text/javascript" src="lib/js/jquery-1.12.1.min.js"></script>
+    <script type="text/javascript" src="lib/js/bootstrap.min.js"></script>
+    <script type="text/javascript" src="lib/js/d3.min.js"></script>
+    <script type="text/javascript" src="lib/js/underscore-min.js"></script>
+    <script type="text/javascript" src="lib/js/angular.min.js"></script>
+
+    <script type="text/javascript" src="util.js"></script>    
+
+  </head>
+  <body>
+ 
+
+    <div class="row" ng-app="mainApp" ng-controller="dateCtrl">
+      
+      <div id="left" class="col-md-2">
+
+        <div class="formList">
+
+          <!-- Title -->
+
+          <h2>Time Picker</h2>
+
+          <!-- Site selector -->
+
+          <div class="form-group siteForm">
+            <label for="site">Web site</label>
+            <input class="form-control" ng-model="form.site" id="site" placeholder="qlobbe.net" value="yabiladi.com">
+          </div>
+
+          <!-- Date selector -->
+
+          <div ng-repeat='dateForm in dateForms'>
+            <blockquote>
+              <div class="form-group">
+                <label for="dateForm-{{$index}}">Date n°{{$index + 1}}</label>
+                <input class="form-control" ng-model='form.date[$index]' id='dateForm-{{$index}}' placeholder="yyyy-mm-dd" value="2011-11-15"/>
+              </div>  
+              <div class="form-group">
+                <label for="rangeForm-{{$index}}">Tolerance</label>
+                <input class="form-control" ng-model='form.range[$index]' id='rangeForm-{{$index}}' placeholder="± x days" value="5"/>                
+              </div>
+            </blockquote>
+          </div>
+
+          <!-- Period selector if needed -->
+
+          <div ng-switch="repeated">
+            <blockquote ng-switch-when="true">
+              <div class="form-group">
+                <label for="period">Period</label>
+                <input class="form-control" ng-model="form.period" id="period" placeholder="every x days">
+              </div> 
+              <div class="form-group">
+                <label for="occurence">Occurences</label>
+                <input class="form-control" ng-model="form.occurence" id="occurence" placeholder="nb of occurences">
+              </div>                            
+            </blockquote>            
+          </div>   
+
+          <!-- Control button -->
+
+          <div class="btn-group btn-group-justified btnForm" role="group" aria-label="...">
+            <div class="btn-group" role="group">
+              <button type="button" ng-disabled="repeated == true" class="btn btn-default" ng-click="add()">
+                <i class="fa fa-plus"></i>
+              </button>
+            </div>
+            <div class="btn-group" role="group">
+              <button type="button" ng-disabled="added == true" class="btn btn-default" ng-click="repeat()">
+                <i class="fa fa-repeat"></i>
+              </button>
+            </div>
+            <div class="btn-group" role="group">
+              <button type="button" class="btn btn-search" ng-click="search(form)"><i class="fa fa-search"></i></button>
+            </div>
+          </div>  
+        </div>    
+      </div>
+      
+      <div id="right" class="col-md-10">
+
+        <div class="vizContainer">
+
+          <h2>{{site}}</h2>
+
+          <div ng-switch="searching">
+            <div ng-switch-when="error" class="alert alert-warning" role="alert"><b>Error : </b>{{errorMsg}}</div>
+            <div ng-switch-when="searching" class="alert alert-info" role="alert"><i class="fa fa-spinner fa-spin"></i> Searching ...</div>
+          </div>
+
+
+          <div ng-repeat="row in grids">
+            <div class="row">
+              <div ng-repeat="cell in row">
+                <div class="col-md-4 active" id="cell-{{$parent.$index}}{{$index}}">
+
+                  <tree-chart></tree-chart>
+
+                  <p><b>{{cell}}</b></p>
+
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div> 
+   
+  </body>
+
+  <script type="text/javascript">
+
+    var app = angular.module('mainApp',[]);
+
+    dateFormCpt = 0;
+
+    app.controller('dateCtrl', ['$scope', function($scope) {
+
+      $scope.dateForms = [dateFormCpt];
+
+      $scope.repeated = false;
+
+      $scope.added = false;      
+        
+      $scope.add = function(){
+        $scope.added = true;
+        dateFormCpt ++;
+        $scope.dateForms.push(dateFormCpt);       
+      }
+
+      $scope.repeat = function(){
+        $scope.repeated = true;      
+      }
+
+      $scope.search = function(form){     
+
+        var check = checkForm(form);
+
+        $scope.searching = check.searching;
+
+        $scope.errorMsg = check.errorMsg;   
+
+        if (check.searching != "searching")
+          return;
+        
+        $scope.site = form.site;
+
+        $scope.dates = _.map(form.date,function(v){
+          return v;
+        });
+
+        $scope.ranges = _.map(form.range,function(v){
+          return v;
+        });
+
+        $scope.grids = [], size = 3;
+
+        if ( form.occurence != undefined ) {
+
+          $scope.dates = createDates($scope.dates[0],form.occurence,form.period);
+
+          $scope.ranges = createRanges($scope.ranges[0],form.occurence);
+
+        }
+
+        while ($scope.dates.length > 0)
+            $scope.grids.push($scope.dates.splice(0, size));                         
+
+        $scope.searching = "done";
+
+      }
+
+    }]).directive('treeChart', function ($parse) {
+     var obj = {
+         restrict: 'E',
+         replace: false,
+         link: function (scope, element, attrs) {
+
+          var rightWidth = $( ".vizContainer" ).width();  
+
+          var diameter = rightWidth * 0.3333;
+
+          var urlTree = d3.select(element[0]);
+
+          var tree = d3.layout.tree()
+              .size([360, (diameter / 2) - (diameter / 5)])
+              .separation(function(a, b) { return (a.parent == b.parent ? 1 : 2) / a.depth; });   
+
+          var diagonal = d3.svg.diagonal.radial()
+              .projection(function(d) { return [d.y, d.x / 180 * Math.PI]; });   
+
+          var svg = urlTree.append("svg")
+              .attr("width", diameter)
+              .attr("height", diameter - (diameter / 4))
+              .append("g")
+              .attr("transform", "translate(" + diameter / 2 + "," + diameter / 2 + ")");    
+
+          d3.json("toto.json", function(error, root) {
+            if (error) throw error;
+
+            var nodes = tree.nodes(root),
+                links = tree.links(nodes);
+
+            var link = svg.selectAll(".link")
+                .data(links)
+                .enter().append("path")
+                .attr("class", "link")
+                .attr("d", diagonal);
+
+            var node = svg.selectAll(".node")
+                .data(nodes)
+                .enter().append("g")
+                .attr("class", "node")
+                .attr("transform", function(d) { return "rotate(" + (d.x - 90) + ")translate(" + d.y + ")"; });
+
+            node.append("circle")
+                .attr("r", 4.5);
+
+            node.append("text")
+                .attr("dy", ".31em")
+                .attr("text-anchor", function(d) { return d.x < 180 ? "start" : "end"; })
+                .attr("transform", function(d) { return d.x < 180 ? "translate(8)" : "rotate(180)translate(-8)"; })
+                .text(function(d) { return d.name; });
+          });
+
+         } 
+      };
+      return obj;
+   });
+  </script>
+</html>
