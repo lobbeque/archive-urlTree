@@ -18,6 +18,7 @@
     <script type="text/javascript" src="lib/js/d3.min.js"></script>
     <script type="text/javascript" src="lib/js/underscore-min.js"></script>
     <script type="text/javascript" src="lib/js/angular.min.js"></script>
+    <script type="text/javascript" src="lib/js/async.js"></script>
 
     <script type="text/javascript" src="util.js"></script>    
 
@@ -101,22 +102,25 @@
           <div ng-switch="searching">
             <div ng-switch-when="error" class="alert alert-warning" role="alert"><b>Error : </b>{{errorMsg}}</div>
             <div ng-switch-when="searching" class="alert alert-info" role="alert"><i class="fa fa-spinner fa-spin"></i> Searching ...</div>
-          </div>
+            <div ng-switch-when="done">
+              <div ng-repeat="row in grids">
+                <div class="row">
+                  <div ng-repeat="cell in row">
+                    <div class="col-md-6 active" id="cell-{{$parent.$index}}{{$index}}">
 
+                      <tree-chart></tree-chart>
 
-          <div ng-repeat="row in grids">
-            <div class="row">
-              <div ng-repeat="cell in row">
-                <div class="col-md-4 active" id="cell-{{$parent.$index}}{{$index}}">
+                      <p><b>{{cell.date}}</b></p>
 
-                  <tree-chart></tree-chart>
-
-                  <p><b>{{cell}}</b></p>
-
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+
+
+
         </div>
       </div>
     </div> 
@@ -129,7 +133,7 @@
 
     dateFormCpt = 0;
 
-    app.controller('dateCtrl', ['$scope', function($scope) {
+    app.controller('dateCtrl', ['$scope', '$http', function($scope, $http) {
 
       $scope.dateForms = [dateFormCpt];
 
@@ -168,7 +172,7 @@
           return v;
         });
 
-        $scope.grids = [], size = 3;
+        $scope.grids = [], size = 2;      
 
         if ( form.occurence != undefined ) {
 
@@ -178,65 +182,101 @@
 
         }
 
-        while ($scope.dates.length > 0)
-            $scope.grids.push($scope.dates.splice(0, size));                         
+        res = [];
 
-        $scope.searching = "done";
+        for (var i = 0; i < $scope.dates.length; i ++){
+          res.push({'date':$scope.dates[i],'range':$scope.ranges[i]});
+        }
+
+        async.each(res, function(r, callback) {
+
+          var idx = res.indexOf(r);
+
+          $http({
+            method: 'GET',
+            url: 'http://localhost:2222/getUrl?coll=ediasporas_maroco&site=' + $scope.site + '&time=' + res[idx].date + '&range=' + res[idx].range
+          }).then(function successCallback(result) {
+
+            var tree = {name:$scope.site,diff:0,children:[]}; 
+
+            var urls = result.data;
+
+            for(var j = 0; j < urls.length; j++) {
+              var branch = getBranch(urls[j].url,urls[j].diff);
+              tree = mergeBranch(tree,branch);
+            }
+
+            res[idx]["tree"] = tree;
+
+            callback();
+
+          }, function errorCallback(err) {
+            console.log(err);
+          });          
+          
+        }, function(err){
+            if( err ) 
+              console.log(err)
+
+            while (res.length > 0)
+              $scope.grids.push(res.splice(0, size));                                    
+
+            $scope.searching = "done";
+        });
 
       }
 
     }]).directive('treeChart', function ($parse) {
      var obj = {
          restrict: 'E',
-         replace: false,
+         scope: true,
          link: function (scope, element, attrs) {
 
-          var rightWidth = $( ".vizContainer" ).width();  
+          if(scope.cell.tree != null) {
+            
+            var rightWidth = $( ".vizContainer" ).width();  
 
-          var diameter = rightWidth * 0.3333;
+            var diameter = rightWidth * 0.5;
 
-          var urlTree = d3.select(element[0]);
+            var urlTree = d3.select(element[0]);
 
-          var tree = d3.layout.tree()
-              .size([360, (diameter / 2) - (diameter / 5)])
-              .separation(function(a, b) { return (a.parent == b.parent ? 1 : 2) / a.depth; });   
+            var tree = d3.layout.tree()
+                .size([360, (diameter / 2) - (diameter / 5)])
+                .separation(function(a, b) { return (a.parent == b.parent ? 1 : 2) / a.depth; });   
 
-          var diagonal = d3.svg.diagonal.radial()
-              .projection(function(d) { return [d.y, d.x / 180 * Math.PI]; });   
+            var diagonal = d3.svg.diagonal.radial()
+                .projection(function(d) { return [d.y, d.x / 180 * Math.PI]; });            
 
-          var svg = urlTree.append("svg")
-              .attr("width", diameter)
-              .attr("height", diameter - (diameter / 4))
-              .append("g")
-              .attr("transform", "translate(" + diameter / 2 + "," + diameter / 2 + ")");    
+            var svg = urlTree.append("svg")
+                .attr("width", diameter)
+                .attr("height", diameter)
+                .append("g")
+                .attr("transform", "translate(" + diameter / 2 + "," + diameter / 2 + ")");    
 
-          d3.json("toto.json", function(error, root) {
-            if (error) throw error;
+              var nodes = tree.nodes(scope.cell.tree),
+                  links = tree.links(nodes);
 
-            var nodes = tree.nodes(root),
-                links = tree.links(nodes);
+              var link = svg.selectAll(".link")
+                  .data(links)
+                  .enter().append("path")
+                  .attr("class", "link")
+                  .attr("d", diagonal);
 
-            var link = svg.selectAll(".link")
-                .data(links)
-                .enter().append("path")
-                .attr("class", "link")
-                .attr("d", diagonal);
+              var node = svg.selectAll(".node")
+                  .data(nodes)
+                  .enter().append("g")
+                  .attr("class", "node")
+                  .attr("transform", function(d) { return "rotate(" + (d.x - 90) + ")translate(" + d.y + ")"; });
 
-            var node = svg.selectAll(".node")
-                .data(nodes)
-                .enter().append("g")
-                .attr("class", "node")
-                .attr("transform", function(d) { return "rotate(" + (d.x - 90) + ")translate(" + d.y + ")"; });
+              node.append("circle")
+                  .attr("r", 4.5);
 
-            node.append("circle")
-                .attr("r", 4.5);
-
-            node.append("text")
-                .attr("dy", ".31em")
-                .attr("text-anchor", function(d) { return d.x < 180 ? "start" : "end"; })
-                .attr("transform", function(d) { return d.x < 180 ? "translate(8)" : "rotate(180)translate(-8)"; })
-                .text(function(d) { return d.name; });
-          });
+              node.append("text")
+                  .attr("dy", ".31em")
+                  .attr("text-anchor", function(d) { return d.x < 180 ? "start" : "end"; })
+                  .attr("transform", function(d) { return d.x < 180 ? "translate(8)" : "rotate(180)translate(-8)"; })
+                  .text(function(d) { return d.name; });
+            }
 
          } 
       };

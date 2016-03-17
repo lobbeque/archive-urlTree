@@ -100,3 +100,45 @@ function drawTrees(grids,doc) {
   }
 
 }
+
+function getBranch(url,diff) {
+
+  if (url.length == 1) {
+    return {name:url[0],diff:diff,children:[]};
+  } else {
+    return{name:url[0],diff:diff,children:[getBranch(_.rest(url),diff)]};
+  }
+}
+
+function mergeBranch(m, branch) {
+  if(_.isEmpty(branch.children)) {
+    if(m.name == branch.name){
+      m.diff = branch.diff;
+    } else {
+      m.children.push(branch);
+    }
+  } else {
+      var isChild = false;
+      var idx = 0;
+      for(var i = 0; i < m.children.length; i ++){
+        if(m.children[i].name == branch.children[0].name){
+          isChild = true;
+        }
+      }
+      if(isChild){
+        m.children[idx] = mergeBranch(m.children[idx],branch.children[0]); 
+      } else {
+        m.children.push(branch.children[0]);
+      }      
+  }
+
+  return m;
+}
+
+function sum(x, y) {
+    if (y > 0) {
+      return {tt:sum(x + 1, y - 1)};
+    } else {
+      return x;
+    }
+}
